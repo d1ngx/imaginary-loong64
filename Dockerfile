@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:latest
-FROM golang:1.24.3-alpine3.21 AS go
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
+FROM lcr.loongnix.cn/library/golang:1.24.6-alpine3.21 AS go
 
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 ENV IMAGINARY_HASH=1d4e251cfcd58ea66f8361f8721d7b8cc85002a3
 
 RUN set -ex; \
@@ -12,14 +12,20 @@ RUN set -ex; \
         vips-heif \
         vips-jxl \
         vips-poppler \
-        giflib \
-        giflib-dev \
-        build-base; \
-   go env -w GO111MODULE=on;\
-go env -w GOPROXY=https://goproxy.cn,direct;\
-    go install github.com/h2non/imaginary@"$IMAGINARY_HASH";
+        build-base;
+    # go install github.com/h2non/imaginary@"$IMAGINARY_HASH";
+    # Copy local source into container
+COPY imaginary-master /go/src/github.com/h2non/imaginary
 
-FROM alpine:3.21.3
+# Change working directory to module
+WORKDIR /go/src/github.com/h2non/imaginary
+
+# Tell Go to use vendored dependencies
+ENV GO111MODULE=on
+RUN go env -w GOFLAGS=-mod=vendor
+RUN go install .
+
+FROM lcr.loongnix.cn/library/alpine:3.22
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 RUN set -ex; \
     apk upgrade --no-cache -a; \
@@ -33,13 +39,11 @@ RUN set -ex; \
         vips-jxl \
         vips-poppler \
         ttf-dejavu \
-        giflib \
-        giflib-dev \
         bash
 
 COPY --from=go /go/bin/imaginary /usr/local/bin/imaginary
-COPY --chmod=775 start.sh /start.sh
-COPY --chmod=775 healthcheck.sh /healthcheck.sh
+COPY start.sh /start.sh
+COPY healthcheck.sh /healthcheck.sh
 
 ENV PORT=9000
 
